@@ -1,0 +1,196 @@
+version: "3"
+networks:
+  traefik_network:
+    external: true
+  private_network:
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.2.0.0/24
+services:
+  duckdns:
+    container_name: duckdns
+    image: lscr.io/linuxserver/duckdns:latest
+    restart: unless-stopped
+    depends_on:
+      - unbound
+      - pihole
+    volumes:
+      - ./config-duckdns:/config
+    env_file: ./.env
+
+  unbound:
+    image: mvance/unbound-rpi:1.17.1 # Use the image "unbound" if you are not on a Raspberry Pi
+    container_name: unbound
+    restart: unless-stopped
+    hostname: unbound
+    volumes:
+      - ./etc-unbound:/opt/unbound/etc/unbound/
+    networks:
+      private_network:
+        ipv4_address: 10.2.0.200
+    cap_add:
+      - NET_ADMIN
+    env_file: ./.env
+
+## Currently not used, I prefer wg-easy
+#  wireguard:
+#    container_name: wireguard
+#    image: linuxserver/wireguard:1.0.20210914
+#    restart: unless-stopped
+#    depends_on:
+#      - unbound
+#      - pihole
+#    networks:
+#      traefik_network:
+#    ports:
+#      #- "5000:5000" ---> WebUI. Not needed, managed by Traefik
+#      - "51820:51820/udp"
+#    volumes:
+#      - ./config-wireguard:/config
+#    cap_add:
+#      - NET_ADMIN
+#      - SYS_MODULE
+#    sysctls:
+#      - net.ipv4.conf.all.src_valid_mark=1
+#      - net.ipv4.ip_forward=1
+#    env_file: ./.env
+#    labels:
+#      - "traefik.enable=true"
+#      - "traefik.http.routers.wirehole.rule=Host(`wirehole.${LOCAL_DOMAIN}`)"
+#      - "traefik.http.routers.wirehole.entrypoints=websecure"
+#      - "traefik.http.routers.wirehole.service=wirehole-svc"
+#      - "traefik.http.services.wirehole-svc.loadbalancer.server.port=5000"
+
+## Currently not used, I prefer wg-easy
+#  wireguard-ui:
+#    container_name: wireguard-ui
+#    image: ngoduykhanh/wireguard-ui:latest
+#    restart: unless-stopped
+#    depends_on:
+#      - wireguard
+#    volumes:
+#      - ./db-wireguard-ui:/app/db
+#      - ./config-wireguard:/config
+#    cap_add:
+#      - NET_ADMIN
+#    network_mode: service:wireguard
+#    logging:
+#      driver: json-file
+#      options:
+#        max-size: 50m
+#    env_file: ./.env
+
+  pihole:
+    container_name: pihole
+    image: pihole/pihole:2024.01.0
+    restart: unless-stopped
+    depends_on:
+      - unbound
+    networks:
+      traefik_network:
+      private_network:
+        ipv4_address: 10.2.0.100
+    ports:
+      - "53:53/tcp"
+      - "192.168.1.200:53:53/udp"
+      #- "80:80/tcp" ---> WebUI. Not needed, managed by Traefik
+    volumes:
+      - ./etc-pihole/:/etc/pihole/
+      - ./etc-dnsmasq.d/:/etc/dnsmasq.d/
+    dns:
+      - 127.0.0.1
+      - ${PIHOLE_DNS_}
+    cap_add:
+      - NET_ADMIN
+    env_file: ./.env
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.pihole.rule=Host(`pihole.${LOCAL_DOMAIN}`)"
+      - "traefik.http.routers.pihole.entrypoints=websecure"
+      - "traefik.http.routers.pihole.service=pihole-svc"
+      - "traefik.http.services.pihole-svc.loadbalancer.server.port=80"
+
+  wg-easy:
+    container_name: wg-easy
+    image: ghcr.io/wg-easy/wg-easy
+    restart: unless-stopped
+    networks:
+      traefik_network:
+      private_network:
+        ipv4_address: 10.2.0.3
+    ports:
+      - "51820:51820/udp"
+      #- "51821:51821/tcp" ---> WebUI. Not needed, managed by Traefik
+    volumes:
+      - "./etc-wireguard:/etc/wireguard"
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv4.ip_forward=1
+    env_file: ./.env
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.wireguard.rule=Host(`wireguard.${LOCAL_DOMAIN}`)"
+      - "traefik.http.routers.wireguard.entrypoints=websecure"
+      - "traefik.http.routers.wireguard.service=wireguard-svc"
+      - "traefik.http.services.wireguard-svc.loadbalancer.server.port=51821"
+
+  traefik:
+    container_name: traefik
+    image: traefik:v2.10.7
+    restart: unless-stopped
+    depends_on:
+      - pihole
+      - wg-easy
+    networks:
+      - traefik_network
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./etc-traefik:/etc/traefik
+    env_file: ./.env
+    security_opt:
+      - no-new-privileges:true
+    command:
+      # Disable stats sending
+      - "--global.sendAnonymousUsage=false"
+      # HTTP to HTTPS redirection
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.websecure.http.tls=true"
+      # API and dashboard
+      - "--api.insecure=false"
+      - "--api.dashboard=true"
+      # Docker configuration
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=traefik_network"
+      - "--providers.docker.watch=true"
+      - "--providers.docker.swarmMode=false"
+      # Disable SSL verification on backend
+      - "--serverstransport.insecureskipverify=true"
+      # Let's Encrypt configuration with Cloudflare DNS challenge
+      - "--certificatesresolvers.letsencrypt.acme.dnschallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.dnschallenge.provider=cloudflare"
+      - "--certificatesresolvers.letsencrypt.acme.dnschallenge.resolvers=1.1.1.1:53,1.0.0.1:53"
+      - "--certificatesresolvers.letsencrypt.acme.email=${CLOUDFLARE_EMAIL}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/etc/traefik/acme.json"
+      - "--certificatesresolvers.letsencrypt.acme.dnschallenge.delaybeforecheck=0"
+      # Let's Encrypt default certificate
+      - "--entrypoints.websecure.http.tls.certresolver=letsencrypt"
+      - "--entrypoints.websecure.http.tls.domains[0].main=${LOCAL_DOMAIN}"
+      - "--entrypoints.websecure.http.tls.domains[0].sans=*.${LOCAL_DOMAIN}"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik.rule=Host(`traefik.${LOCAL_DOMAIN}`)"
+      - "traefik.http.routers.traefik.entrypoints=websecure"
+      - "traefik.http.routers.traefik.service=api@internal"
+      - "traefik.http.middlewares.auth.basicauth.users=USER:PASSWD"
+      - "traefik.http.routers.traefik.middlewares=auth"
