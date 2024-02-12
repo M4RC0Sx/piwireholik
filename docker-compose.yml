@@ -111,6 +111,31 @@ services:
       - "traefik.http.routers.pihole.service=pihole-svc"
       - "traefik.http.services.pihole-svc.loadbalancer.server.port=80"
 
+  pialert:
+    container_name: pialert
+    image: jokobsk/pi.alert:latest
+    restart: unless-stopped
+    depends_on:
+      - pihole
+    networks:
+      traefik_network:
+    #ports:
+      #- "20211:20211/tcp" ---> WebUI. Not needed, managed by Traefik
+    volumes:
+      - ./etc-pihole/:/etc/pihole/
+      - ./etc-pialert:/home/pi/pialert/config
+      - ./data-pialert:/home/pi/pialert/db
+    env_file: ./.env
+    environment:
+      - HOST_USER_ID=${PUID}
+      - HOST_USER_GID=${PGID}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.pialert.rule=Host(`pialert.${LOCAL_DOMAIN}`)"
+      - "traefik.http.routers.pialert.entrypoints=websecure"
+      - "traefik.http.routers.pialert.service=pialert-svc"
+      - "traefik.http.services.pialert-svc.loadbalancer.server.port=20211"
+
   wg-easy:
     container_name: wg-easy
     image: ghcr.io/wg-easy/wg-easy
@@ -144,6 +169,7 @@ services:
     restart: unless-stopped
     depends_on:
       - pihole
+      - pialert
       - wg-easy
     networks:
       - traefik_network
