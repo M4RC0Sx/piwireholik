@@ -1,0 +1,162 @@
+version: "3"
+networks:
+  private_network:
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.2.0.0/24
+services:
+  duckdns:
+    container_name: duckdns
+    image: lscr.io/linuxserver/duckdns:latest
+    restart: unless-stopped
+    depends_on:
+      - unbound
+      - pihole
+    volumes:
+      - ./config-duckdns:/config
+    env_file: ./.env
+
+  unbound:
+    image: mvance/unbound-rpi:1.17.1 # Use the image "unbound" if you are not on a Raspberry Pi
+    container_name: unbound
+    restart: unless-stopped
+    hostname: unbound
+    volumes:
+      - ./etc-unbound:/opt/unbound/etc/unbound/
+    networks:
+      private_network:
+        ipv4_address: 10.2.0.200
+    cap_add:
+      - NET_ADMIN
+    env_file: ./.env
+
+## Currently not used, I prefer wg-easy
+#  wireguard:
+#    container_name: wireguard
+#    image: linuxserver/wireguard:1.0.20210914
+#    restart: unless-stopped
+#    depends_on:
+#      - unbound
+#      - pihole
+#    networks:
+#      traefik_network:
+#    ports:
+#      - "5000:5000"
+#      - "51820:51820/udp"
+#    volumes:
+#      - ./config-wireguard:/config
+#    cap_add:
+#      - NET_ADMIN
+#      - SYS_MODULE
+#    sysctls:
+#      - net.ipv4.conf.all.src_valid_mark=1
+#      - net.ipv4.ip_forward=1
+#    env_file: ./.env
+#    labels:
+#      - "traefik.enable=true"
+#      - "traefik.http.routers.wirehole.rule=Host(`wirehole.${LOCAL_DOMAIN}`)"
+#      - "traefik.http.routers.wirehole.entrypoints=websecure"
+#      - "traefik.http.routers.wirehole.service=wirehole-svc"
+#      - "traefik.http.services.wirehole-svc.loadbalancer.server.port=5000"
+
+## Currently not used, I prefer wg-easy
+#  wireguard-ui:
+#    container_name: wireguard-ui
+#    image: ngoduykhanh/wireguard-ui:latest
+#    restart: unless-stopped
+#    depends_on:
+#      - wireguard
+#    volumes:
+#      - ./db-wireguard-ui:/app/db
+#      - ./config-wireguard:/config
+#    cap_add:
+#      - NET_ADMIN
+#    network_mode: service:wireguard
+#    logging:
+#      driver: json-file
+#      options:
+#        max-size: 50m
+#    env_file: ./.env
+
+  pihole:
+    container_name: pihole
+    image: pihole/pihole:2024.01.0
+    restart: unless-stopped
+    depends_on:
+      - unbound
+    networks:
+      traefik_network:
+      private_network:
+        ipv4_address: 10.2.0.100
+    ports:
+      - "53:53/tcp"
+      - "192.168.1.200:53:53/udp"
+      - "80:80/tcp"
+    volumes:
+      - ./etc-pihole/:/etc/pihole/
+      - ./etc-dnsmasq.d/:/etc/dnsmasq.d/
+    dns:
+      - 127.0.0.1
+      - ${PIHOLE_DNS_}
+    cap_add:
+      - NET_ADMIN
+    env_file: ./.env
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.pihole.rule=Host(`pihole.${LOCAL_DOMAIN}`)"
+      - "traefik.http.routers.pihole.entrypoints=websecure"
+      - "traefik.http.routers.pihole.service=pihole-svc"
+      - "traefik.http.services.pihole-svc.loadbalancer.server.port=80"
+
+  pialert:
+    container_name: pialert
+    image: jokobsk/pi.alert:latest
+    restart: unless-stopped
+    depends_on:
+      - pihole
+    networks:
+      traefik_network:
+    ports:
+      - "20211:20211/tcp"
+    volumes:
+      - ./etc-pihole/:/etc/pihole/
+      - ./etc-pialert:/home/pi/pialert/config
+      - ./data-pialert:/home/pi/pialert/db
+    env_file: ./.env
+    environment:
+      - HOST_USER_ID=${PUID}
+      - HOST_USER_GID=${PGID}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.pialert.rule=Host(`pialert.${LOCAL_DOMAIN}`)"
+      - "traefik.http.routers.pialert.entrypoints=websecure"
+      - "traefik.http.routers.pialert.service=pialert-svc"
+      - "traefik.http.services.pialert-svc.loadbalancer.server.port=20211"
+
+  wg-easy:
+    container_name: wg-easy
+    image: ghcr.io/wg-easy/wg-easy
+    restart: unless-stopped
+    networks:
+      traefik_network:
+      private_network:
+        ipv4_address: 10.2.0.3
+    ports:
+      - "51820:51820/udp"
+      - "51821:51821/tcp"
+    volumes:
+      - "./etc-wireguard:/etc/wireguard"
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv4.ip_forward=1
+    env_file: ./.env
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.wireguard.rule=Host(`wireguard.${LOCAL_DOMAIN}`)"
+      - "traefik.http.routers.wireguard.entrypoints=websecure"
+      - "traefik.http.routers.wireguard.service=wireguard-svc"
+      - "traefik.http.services.wireguard-svc.loadbalancer.server.port=51821"
