@@ -33,6 +33,9 @@ docker compose up -d
 ```
 If you want to disable a (non-essential) service, just comment it out in the docker compose file.
 
+### First execution
+In the first run, you will need to publish a different port 80 (which is in use by Traefik) for the PiHole web interface. You will need to access this interface to configure the private/internal DNS entries to access the other services and the PiHole panel itself without exposing the container ports, all through Traefik.
+
 ### Setting up DuckDNS
 DuckDNS is a free DynDNS service that will allow you to connect to your VPN from anywhere, even if the IP provided by your ISP is dynamic.
 
