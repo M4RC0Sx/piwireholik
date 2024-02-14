@@ -10,7 +10,7 @@ networks:
 services:
   duckdns:
     container_name: duckdns
-    image: lscr.io/linuxserver/duckdns:latest
+    image: lscr.io/linuxserver/duckdns:version-b14c520a
     restart: unless-stopped
     depends_on:
       - unbound
@@ -138,7 +138,7 @@ services:
 
   wg-easy:
     container_name: wg-easy
-    image: ghcr.io/wg-easy/wg-easy
+    image: ghcr.io/wg-easy/wg-easy:10
     restart: unless-stopped
     networks:
       traefik_network:
