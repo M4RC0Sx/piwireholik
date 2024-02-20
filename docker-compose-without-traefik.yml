@@ -39,8 +39,6 @@ services:
 #    depends_on:
 #      - unbound
 #      - pihole
-#    networks:
-#      traefik_network:
 #    ports:
 #      - "5000:5000"
 #      - "51820:51820/udp"
@@ -53,12 +51,6 @@ services:
 #      - net.ipv4.conf.all.src_valid_mark=1
 #      - net.ipv4.ip_forward=1
 #    env_file: ./.env
-#    labels:
-#      - "traefik.enable=true"
-#      - "traefik.http.routers.wirehole.rule=Host(`wirehole.${LOCAL_DOMAIN}`)"
-#      - "traefik.http.routers.wirehole.entrypoints=websecure"
-#      - "traefik.http.routers.wirehole.service=wirehole-svc"
-#      - "traefik.http.services.wirehole-svc.loadbalancer.server.port=5000"
 
 ## Currently not used, I prefer wg-easy
 #  wireguard-ui:
@@ -86,7 +78,6 @@ services:
     depends_on:
       - unbound
     networks:
-      traefik_network:
       private_network:
         ipv4_address: 10.2.0.100
     ports:
@@ -102,12 +93,6 @@ services:
     cap_add:
       - NET_ADMIN
     env_file: ./.env
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.pihole.rule=Host(`pihole.${LOCAL_DOMAIN}`)"
-      - "traefik.http.routers.pihole.entrypoints=websecure"
-      - "traefik.http.routers.pihole.service=pihole-svc"
-      - "traefik.http.services.pihole-svc.loadbalancer.server.port=80"
 
   pialert:
     container_name: pialert
@@ -115,10 +100,9 @@ services:
     restart: unless-stopped
     depends_on:
       - pihole
-    networks:
-      traefik_network:
-    ports:
-      - "20211:20211/tcp"
+    network_mode: host
+    expose:
+      - 20211
     volumes:
       - ./etc-pihole/:/etc/pihole/
       - ./etc-pialert:/home/pi/pialert/config
@@ -127,19 +111,12 @@ services:
     environment:
       - HOST_USER_ID=${PUID}
       - HOST_USER_GID=${PGID}
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.pialert.rule=Host(`pialert.${LOCAL_DOMAIN}`)"
-      - "traefik.http.routers.pialert.entrypoints=websecure"
-      - "traefik.http.routers.pialert.service=pialert-svc"
-      - "traefik.http.services.pialert-svc.loadbalancer.server.port=20211"
 
   wg-easy:
     container_name: wg-easy
     image: ghcr.io/wg-easy/wg-easy:10
     restart: unless-stopped
     networks:
-      traefik_network:
       private_network:
         ipv4_address: 10.2.0.3
     ports:
@@ -154,9 +131,3 @@ services:
       - net.ipv4.conf.all.src_valid_mark=1
       - net.ipv4.ip_forward=1
     env_file: ./.env
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.wireguard.rule=Host(`wireguard.${LOCAL_DOMAIN}`)"
-      - "traefik.http.routers.wireguard.entrypoints=websecure"
-      - "traefik.http.routers.wireguard.service=wireguard-svc"
-      - "traefik.http.services.wireguard-svc.loadbalancer.server.port=51821"
