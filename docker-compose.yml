@@ -117,10 +117,9 @@ services:
     restart: unless-stopped
     depends_on:
       - pihole
-    networks:
-      traefik_network:
-    #ports:
-      #- "20211:20211/tcp" ---> WebUI. Not needed, managed by Traefik
+    network_mode: host
+    expose:
+      - 20211
     volumes:
       - ./etc-pihole/:/etc/pihole/
       - ./etc-pialert:/home/pi/pialert/config
@@ -176,6 +175,8 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    extra_hosts:
+      - host.docker.internal:172.17.0.1
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./etc-traefik:/etc/traefik
