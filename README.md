@@ -50,7 +50,7 @@ To get **SUBDOMAINS** and **TOKEN** values, go to [the official DuckDNS website]
 
 3. The **CF_API_EMAIL** environment variable will be your Cloudflare email.
 
-### Setting up Traefik network
+#### Setting up Traefik network
 Traefik uses a Docker network to discover services. This network is declared as `external` in the docker-compose file. You must create it manually:
 ```bash
 docker network create traefik_network 
